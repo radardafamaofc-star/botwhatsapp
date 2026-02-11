@@ -1,33 +1,37 @@
-import { Monitor, Smartphone, Tablet } from "lucide-react";
-
-const devices = [
-  { icon: Monitor, label: "Smart TV" },
-  { icon: Smartphone, label: "Celular" },
-  { icon: Tablet, label: "Tablet" },
-];
+import devicesMockup from "@/assets/devices-mockup.jpg";
 
 const DevicesSection = () => {
   return (
-    <section className="py-20 bg-secondary/30">
-      <div className="container mx-auto px-4 text-center">
-        <h2 className="text-3xl md:text-4xl font-extrabold mb-4">
-          ASSISTA <span className="text-gradient">ONDE QUISER</span>
-        </h2>
-        <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-12">
-          Nossa plataforma é compatível com diversos dispositivos. Assista no conforto da sua casa ou onde estiver.
-        </p>
-        
-        <div className="flex flex-wrap justify-center gap-10 md:gap-16">
-          {devices.map((device) => (
-            <div key={device.label} className="flex flex-col items-center gap-4 group">
-              <div className="w-24 h-24 rounded-2xl bg-card border border-border flex items-center justify-center group-hover:border-primary/50 group-hover:shadow-[0_0_20px_hsl(25_95%_53%_/_0.2)] transition-all duration-300">
-                <device.icon className="h-10 w-10 text-primary" />
-              </div>
-              <span className="font-semibold text-foreground">{device.label}</span>
+    <section className="py-20 relative overflow-hidden">
+      {/* Orange gradient border top */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+      
+      <div className="container mx-auto px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="order-2 lg:order-1">
+            <h2 className="text-3xl md:text-4xl font-extrabold mb-6 uppercase">
+              ASSISTA <span className="text-gradient">ONDE QUISER</span>
+            </h2>
+            <p className="text-muted-foreground text-base leading-relaxed mb-6">
+              A Plataforma IPTV Power traz o melhor do entretenimento na palma da sua mão. 
+              São mais de 14.000 canais ao vivo, filmes e séries disponíveis em alta qualidade, 
+              compatível com Smart TVs, celulares, tablets, computadores e TV Box.
+            </p>
+            <p className="text-muted-foreground text-base leading-relaxed">
+              Assista no conforto da sua casa ou onde estiver, sem travamentos e com a melhor experiência.
+            </p>
+          </div>
+          
+          <div className="order-1 lg:order-2 relative">
+            <div className="rounded-2xl overflow-hidden border border-primary/20 shadow-[0_0_40px_hsl(25_95%_53%_/_0.15)]">
+              <img src={devicesMockup} alt="Assista em qualquer dispositivo" className="w-full h-auto" />
             </div>
-          ))}
+          </div>
         </div>
       </div>
+      
+      {/* Orange gradient border bottom */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
     </section>
   );
 };
