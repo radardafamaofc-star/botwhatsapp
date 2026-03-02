@@ -3,16 +3,39 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import pkg from "whatsapp-web.js";
+import fs from "fs";
+import path from "path";
 const { Client, LocalAuth } = pkg;
 
 // Global client instance
 let whatsappClient: InstanceType<typeof Client> | null = null;
 const SESSION_ID = 'default-session';
 
+function clearChromiumLocks() {
+  const authDir = path.join(process.cwd(), '.wwebjs_auth');
+  try {
+    const sessionDirs = fs.readdirSync(authDir);
+    for (const dir of sessionDirs) {
+      const sessionPath = path.join(authDir, dir);
+      for (const lockFile of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+        const lockPath = path.join(sessionPath, lockFile);
+        if (fs.existsSync(lockPath)) {
+          fs.unlinkSync(lockPath);
+          console.log(`Removed stale lock: ${lockPath}`);
+        }
+      }
+    }
+  } catch (e) {
+    // Auth dir may not exist yet, that's fine
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  clearChromiumLocks();
 
   // Ensure default session exists in DB
   let dbSession = await storage.getSession(SESSION_ID);
