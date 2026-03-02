@@ -110,7 +110,20 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ConnectionPrompt() {
-  const { mutate: connect, isPending } = useConnectSession();
+  const { mutate: connect, isPending, isError, error } = useConnectSession();
+  const { toast } = useToast();
+
+  const handleConnect = () => {
+    connect(undefined, {
+      onError: (err) => {
+        toast({
+          title: "Erro ao conectar",
+          description: err.message || "Não foi possível iniciar a conexão. Tente novamente.",
+          variant: "destructive",
+        });
+      }
+    });
+  };
 
   return (
     <motion.div
@@ -127,9 +140,16 @@ function ConnectionPrompt() {
         Vincule sua conta do WhatsApp para transferir membros entre grupos de forma simples. 
         Clique abaixo para gerar um código QR seguro.
       </p>
+
+      {isError && (
+        <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium flex items-center gap-2">
+          <AlertCircle className="h-4 w-4" />
+          {error?.message || "Falha ao conectar. Tente novamente."}
+        </div>
+      )}
       
       <button
-        onClick={() => connect()}
+        onClick={handleConnect}
         disabled={isPending}
         className="mt-4 px-8 py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-primary to-primary/80 text-white shadow-xl shadow-primary/25 hover:shadow-2xl hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center gap-3"
       >
