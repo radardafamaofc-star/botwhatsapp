@@ -160,8 +160,8 @@ export async function registerRoutes(
         return res.status(500).json({ message: "WhatsApp client not connected." });
       }
 
-      const sourceChat = await whatsappClient.getChatById(sourceGroupId) as any;
-      const targetChat = await whatsappClient.getChatById(targetGroupId) as any;
+      const sourceChat = await whatsappClient.getChatById(sourceGroupId);
+      const targetChat = await whatsappClient.getChatById(targetGroupId);
 
       if (!sourceChat || !sourceChat.isGroup) {
         return res.status(400).json({ message: "Invalid source group." });
@@ -170,39 +170,121 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid target group." });
       }
 
-      const sourceParticipants = sourceChat.participants;
-      const targetParticipants = targetChat.participants;
+      // Re-fetch to ensure we have the latest state with participants
+      let sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
+      let targetChatFresh = await whatsappClient.getChatById(targetGroupId);
+
+      // FORCE REFRESH: Attempt to force metadata load
+      try {
+        console.log(`Refreshing metadata for groups: ${sourceGroupId}, ${targetGroupId}`);
+        
+        // 1. Fetch messages (standard way to trigger sync)
+        await (sourceChatFresh as any).fetchMessages({ limit: 50 });
+        await (targetChatFresh as any).fetchMessages({ limit: 50 });
+
+        // 2. Try to get contact to force internal sync
+        await sourceChatFresh.getContact();
+        await targetChatFresh.getContact();
+
+        // 3. Force a metadata sync via internal Store if possible
+        if ((whatsappClient as any).pupPage) {
+           await (whatsappClient as any).pupPage.evaluate(async (sId: string, tId: string) => {
+             try {
+               // @ts-ignore
+               if (window.Store && window.Store.GroupMetadata) {
+                 // @ts-ignore
+                 await window.Store.GroupMetadata.update(sId);
+                 // @ts-ignore
+                 await window.Store.GroupMetadata.update(tId);
+               }
+             } catch (e) {}
+           }, sourceGroupId, targetGroupId).catch(() => {});
+        }
+
+        // 4. Re-fetch chat objects
+        sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
+        targetChatFresh = await whatsappClient.getChatById(targetGroupId);
+      } catch (e: any) {
+        console.log("Metadata refresh attempt error:", e.message);
+      }
+
+      let sourceParticipants = (sourceChatFresh as any).participants || [];
+      
+      // Fallback: Check internal groupMetadata
+      if (sourceParticipants.length === 0 && (sourceChatFresh as any).groupMetadata) {
+        sourceParticipants = (sourceChatFresh as any).groupMetadata.participants || [];
+        console.log("Found participants in internal groupMetadata:", sourceParticipants.length);
+      }
+
+      // Final fallback: try to use the raw participants from groupMetadata if it exists
+      if (sourceParticipants.length === 0 && (sourceChatFresh as any).groupMetadata) {
+          sourceParticipants = (sourceChatFresh as any).groupMetadata.participants;
+      }
+
+      const targetParticipants = (targetChatFresh as any).participants || [];
+
+      console.log(`Source group: ${(sourceChatFresh as any).name} (${sourceParticipants.length} parts)`);
+      console.log(`Target group: ${(targetChatFresh as any).name} (${targetParticipants.length} parts)`);
 
       const targetMemberIds = new Set(targetParticipants.map((p: any) => p.id._serialized));
       const membersToAdd = sourceParticipants
         .filter((p: any) => !targetMemberIds.has(p.id._serialized))
         .map((p: any) => p.id._serialized);
 
+      console.log(`Filtered members to add: ${membersToAdd.length}`);
+
       if (membersToAdd.length === 0) {
-        return res.json({ message: "No new members to add.", added: 0, failed: 0, details: [] });
+        let msg = "Todos os membros do grupo de origem já estão no grupo de destino.";
+        if (sourceParticipants.length === 0) {
+           msg = "Não foi possível carregar os membros do grupo. Certifique-se de que você é administrador e o grupo está ativo no seu celular. Tente enviar uma mensagem no grupo para acordá-lo.";
+        }
+        return res.json({ 
+          message: msg, 
+          added: 0, 
+          failed: 0, 
+          details: sourceParticipants.length === 0 ? ["Zero participantes encontrados na origem."] : [] 
+        });
       }
 
-      const response = await targetChat.addParticipants(membersToAdd);
-      
+      // Add participants in small batches to avoid rate limits or errors
+      const batchSize = 5;
       let added = 0;
       let failed = 0;
       let details: string[] = [];
-      
-      if (response && typeof response === 'object') {
-        for (const [id, result] of Object.entries(response)) {
-          if (result === 200) {
-            added++;
+
+      for (let i = 0; i < membersToAdd.length; i += batchSize) {
+        const batch = membersToAdd.slice(i, i + batchSize);
+        try {
+          console.log(`Adding batch of ${batch.length} members to ${targetGroupId}...`);
+          const response = await (targetChatFresh as any).addParticipants(batch);
+          
+          if (response && typeof response === 'object') {
+            for (const [id, result] of Object.entries(response)) {
+              // result 200: success, result 403: privacy, result 404: not found, result 409: already in group
+              if (result === 200 || result === true) {
+                added++;
+              } else if (result === 409) {
+                console.log(`Member ${id} already in group.`);
+              } else {
+                failed++;
+                details.push(`Falha ao adicionar ${id}: Código de erro ${result}`);
+              }
+            }
           } else {
-            failed++;
-            details.push(`Failed to add ${id}: Error code ${result}`);
+            // Fallback if response is not an object (some versions of wwebjs)
+            added += batch.length;
           }
+        } catch (err: any) {
+          console.error("Batch add error:", err);
+          failed += batch.length;
+          details.push(`Lote falhou: ${err.message}`);
         }
-      } else {
-        added = membersToAdd.length;
+        // Small delay between batches to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       res.json({
-        message: `Processed member transfer.`,
+        message: `Transferência de membros processada.`,
         added,
         failed,
         details

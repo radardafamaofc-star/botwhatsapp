@@ -75,13 +75,13 @@ export default function Home() {
 
 function StatusBadge({ status }: { status: string }) {
   const config = {
-    connected: { color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", icon: CheckCircle2, text: "Connected" },
-    qr_ready: { color: "bg-amber-500/10 text-amber-600 border-amber-500/20", icon: RefreshCcw, text: "Awaiting Scan" },
-    starting: { color: "bg-blue-500/10 text-blue-600 border-blue-500/20", icon: Loader2, text: "Starting..." },
-    disconnected: { color: "bg-slate-500/10 text-slate-600 border-slate-500/20", icon: Smartphone, text: "Disconnected" }
+    connected: { color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", icon: CheckCircle2, text: "Conectado" },
+    qr_ready: { color: "bg-amber-500/10 text-amber-600 border-amber-500/20", icon: RefreshCcw, text: "Aguardando Scan" },
+    starting: { color: "bg-blue-500/10 text-blue-600 border-blue-500/20", icon: Loader2, text: "Iniciando..." },
+    disconnected: { color: "bg-slate-500/10 text-slate-600 border-slate-500/20", icon: Smartphone, text: "Desconectado" }
   };
 
-  const currentConfig = config[status as keyof typeof config] || config.disconnected;
+  const currentConfig = (config as any)[status] || config.disconnected;
   const Icon = currentConfig.icon;
 
   return (
@@ -105,10 +105,10 @@ function ConnectionPrompt() {
       <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center mb-4">
         <Smartphone className="h-10 w-10 text-primary" />
       </div>
-      <h2 className="text-3xl font-bold text-gradient">Connect your Account</h2>
+      <h2 className="text-3xl font-bold text-gradient">Conecte sua Conta</h2>
       <p className="text-muted-foreground max-w-md text-lg">
-        Link your WhatsApp account to seamlessly transfer members between groups. 
-        Click below to generate a secure QR code.
+        Vincule sua conta do WhatsApp para transferir membros entre grupos de forma simples. 
+        Clique abaixo para gerar um código QR seguro.
       </p>
       
       <button
@@ -117,7 +117,7 @@ function ConnectionPrompt() {
         className="mt-4 px-8 py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-primary to-primary/80 text-white shadow-xl shadow-primary/25 hover:shadow-2xl hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center gap-3"
       >
         {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Smartphone className="h-5 w-5" />}
-        {isPending ? "Generating QR..." : "Generate Link Code"}
+        {isPending ? "Gerando QR..." : "Gerar Código de Vinculação"}
       </button>
     </motion.div>
   );
@@ -134,8 +134,8 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
       className="glass-card rounded-3xl p-10 flex flex-col items-center justify-center text-center space-y-8"
     >
       <div>
-        <h2 className="text-3xl font-bold text-foreground mb-2">Scan to Link</h2>
-        <p className="text-muted-foreground">Open WhatsApp on your phone and scan this code.</p>
+        <h2 className="text-3xl font-bold text-foreground mb-2">Escaneie para Vincular</h2>
+        <p className="text-muted-foreground">Abra o WhatsApp no seu celular e escaneie este código.</p>
       </div>
 
       <div className="p-6 bg-white rounded-3xl shadow-lg border border-slate-100">
@@ -153,7 +153,7 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
         onClick={() => disconnect()}
         className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
       >
-        Cancel Connection
+        Cancelar Conexão
       </button>
     </motion.div>
   );
@@ -174,9 +174,11 @@ function TransferDashboard() {
     moveMembers({ sourceGroupId: sourceId, targetGroupId: targetId }, {
       onSuccess: (res) => {
         toast({
-          title: "Transfer Complete",
-          description: `Successfully added ${res.added} members. ${res.failed > 0 ? `Failed: ${res.failed}` : ''}`,
-          variant: "default",
+          title: "Transferência",
+          description: res.added > 0 
+            ? `Sucesso! Foram adicionados ${res.added} membros.` 
+            : res.message,
+          variant: res.added > 0 ? "default" : "destructive",
         });
         setSourceId("");
         setTargetId("");
@@ -202,15 +204,15 @@ function TransferDashboard() {
       <div className="glass-card rounded-3xl p-6 md:p-10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Group Transfer</h2>
-            <p className="text-muted-foreground mt-1">Move members safely between your administered groups.</p>
+            <h2 className="text-2xl font-bold text-foreground">Transferência de Grupo</h2>
+            <p className="text-muted-foreground mt-1">Mova membros com segurança entre seus grupos administrados.</p>
           </div>
           <button
             onClick={() => disconnect()}
             className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-muted-foreground font-semibold hover:bg-muted hover:text-foreground transition-all"
           >
             <LogOut className="h-4 w-4" />
-            Disconnect
+            Desconectar
           </button>
         </div>
 
@@ -225,7 +227,7 @@ function TransferDashboard() {
             <div className="space-y-3">
               <label className="text-sm font-bold text-foreground flex items-center gap-2">
                 <Users className="h-4 w-4 text-primary" />
-                Source Group
+                Grupo de Origem
               </label>
               <div className="relative">
                 <select
@@ -234,7 +236,7 @@ function TransferDashboard() {
                   disabled={isMoving}
                   className="w-full appearance-none bg-background border-2 border-border text-foreground rounded-2xl px-5 py-4 font-medium focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <option value="" disabled>Select group to pull from...</option>
+                  <option value="" disabled>Selecione o grupo de origem...</option>
                   {groups?.map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
@@ -254,7 +256,7 @@ function TransferDashboard() {
             <div className="space-y-3">
               <label className="text-sm font-bold text-foreground flex items-center gap-2">
                 <Users className="h-4 w-4 text-accent" />
-                Target Group
+                Grupo de Destino
               </label>
               <div className="relative">
                 <select
@@ -263,7 +265,7 @@ function TransferDashboard() {
                   disabled={isMoving}
                   className="w-full appearance-none bg-background border-2 border-border text-foreground rounded-2xl px-5 py-4 font-medium focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <option value="" disabled>Select destination group...</option>
+                  <option value="" disabled>Selecione o grupo de destino...</option>
                   {groups?.map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
@@ -285,7 +287,7 @@ function TransferDashboard() {
             className="mt-6 p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center gap-3 text-destructive font-medium"
           >
             <AlertCircle className="h-5 w-5" />
-            Source and Target groups cannot be the same.
+            Os grupos de origem e destino não podem ser os mesmos.
           </motion.div>
         )}
 
@@ -298,11 +300,11 @@ function TransferDashboard() {
             {isMoving ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Transferring...
+                Transferindo...
               </>
             ) : (
               <>
-                Move Members
+                Mover Membros
                 <ArrowRightLeft className="h-5 w-5" />
               </>
             )}
