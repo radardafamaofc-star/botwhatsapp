@@ -43,28 +43,39 @@ let whatsappClient: InstanceType<typeof Client> | null = null;
 const SESSION_ID = 'default-session';
 
 function clearChromiumLocks() {
-  const authDir = path.join(process.cwd(), '.wwebjs_auth');
-  try {
-    if (!fs.existsSync(authDir)) return;
-    const sessionDirs = fs.readdirSync(authDir);
-    for (const dir of sessionDirs) {
-      const sessionPath = path.join(authDir, dir);
-      if (!fs.lstatSync(sessionPath).isDirectory()) continue;
-      for (const lockFile of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
-        const lockPath = path.join(sessionPath, lockFile);
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  const dirsToCheck = [
+    path.join(process.cwd(), '.wwebjs_auth'),
+    path.join(process.cwd(), '.config', 'chromium'),
+  ];
+
+  function removeLocks(dir: string) {
+    try {
+      if (!fs.existsSync(dir)) return;
+      // Remove locks directly in this dir
+      for (const lockFile of lockFiles) {
+        const lockPath = path.join(dir, lockFile);
         if (fs.existsSync(lockPath)) {
-          try {
-            fs.unlinkSync(lockPath);
-            console.log(`Removed stale lock: ${lockPath}`);
-          } catch (e) {
-            console.error(`Failed to remove lock ${lockPath}:`, e);
-          }
+          try { fs.unlinkSync(lockPath); console.log(`Removed lock: ${lockPath}`); } catch {}
         }
       }
-    }
-  } catch (e) {
-    console.error("Error clearing locks:", e);
+      // Recurse into subdirs
+      for (const entry of fs.readdirSync(dir)) {
+        const fullPath = path.join(dir, entry);
+        try {
+          if (fs.lstatSync(fullPath).isDirectory()) removeLocks(fullPath);
+        } catch {}
+      }
+    } catch {}
   }
+
+  for (const d of dirsToCheck) removeLocks(d);
+
+  // Also kill any orphaned chromium processes
+  try {
+    execSync('pkill -f chromium 2>/dev/null || true');
+    console.log('[WA] Killed orphaned chromium processes');
+  } catch {}
 }
 
 export async function registerRoutes(
