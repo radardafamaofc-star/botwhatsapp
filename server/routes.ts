@@ -170,40 +170,39 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid target group." });
       }
 
-      // Re-fetch to ensure we have the latest state with participants
+      // Re-fetch to ensure we have the latest state
       let sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
       let targetChatFresh = await whatsappClient.getChatById(targetGroupId);
 
-      // FORCE REFRESH: Attempt to force metadata load
+      // FAST REFRESH: Optimized strategy with strict timeout
       try {
-        console.log(`Refreshing metadata for groups: ${sourceGroupId}, ${targetGroupId}`);
+        console.log(`Refreshing metadata for: ${sourceGroupId}`);
         
-        // 1. Fetch messages (standard way to trigger sync)
-        await (sourceChatFresh as any).fetchMessages({ limit: 50 });
-        await (targetChatFresh as any).fetchMessages({ limit: 50 });
+        await Promise.race([
+          (async () => {
+            // 1. Force update via Puppeteer - usually the most effective
+            if ((whatsappClient as any).pupPage) {
+              await (whatsappClient as any).pupPage.evaluate(async (sId: string) => {
+                try {
+                  // @ts-ignore
+                  if (window.Store && window.Store.GroupMetadata) {
+                    // @ts-ignore
+                    await window.Store.GroupMetadata.update(sId);
+                  }
+                } catch (e) {}
+              }, sourceGroupId).catch(() => {});
+            }
+            
+            // 2. Minimal fetch to trigger internal sync
+            try {
+              await (sourceChatFresh as any).fetchMessages({ limit: 1 });
+            } catch (e) {}
+          })(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+        ]).catch(e => console.log("Metadata refresh timeout or error:", e.message));
 
-        // 2. Try to get contact to force internal sync
-        await sourceChatFresh.getContact();
-        await targetChatFresh.getContact();
-
-        // 3. Force a metadata sync via internal Store if possible
-        if ((whatsappClient as any).pupPage) {
-           await (whatsappClient as any).pupPage.evaluate(async (sId: string, tId: string) => {
-             try {
-               // @ts-ignore
-               if (window.Store && window.Store.GroupMetadata) {
-                 // @ts-ignore
-                 await window.Store.GroupMetadata.update(sId);
-                 // @ts-ignore
-                 await window.Store.GroupMetadata.update(tId);
-               }
-             } catch (e) {}
-           }, sourceGroupId, targetGroupId).catch(() => {});
-        }
-
-        // 4. Re-fetch chat objects
+        // Re-fetch chat object to pick up changes from Puppeteer injection
         sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
-        targetChatFresh = await whatsappClient.getChatById(targetGroupId);
       } catch (e: any) {
         console.log("Metadata refresh attempt error:", e.message);
       }
@@ -213,18 +212,45 @@ export async function registerRoutes(
       // Fallback: Check internal groupMetadata
       if (sourceParticipants.length === 0 && (sourceChatFresh as any).groupMetadata) {
         sourceParticipants = (sourceChatFresh as any).groupMetadata.participants || [];
-        console.log("Found participants in internal groupMetadata:", sourceParticipants.length);
       }
 
-      // Final fallback: try to use the raw participants from groupMetadata if it exists
-      if (sourceParticipants.length === 0 && (sourceChatFresh as any).groupMetadata) {
-          sourceParticipants = (sourceChatFresh as any).groupMetadata.participants;
+      // Deep fallback: If still empty, try one last direct read from Store via Puppeteer
+      if (sourceParticipants.length === 0 && (whatsappClient as any).pupPage) {
+        try {
+          const remoteParticipants = await (whatsappClient as any).pupPage.evaluate(async (sId: string) => {
+            try {
+              // @ts-ignore
+              const chat = window.Store.Chat.get(sId) || window.Store.Chat.models.find(c => (c.id._serialized || c.id) === sId);
+              if (chat && chat.groupMetadata && chat.groupMetadata.participants) {
+                return chat.groupMetadata.participants.map((p: any) => ({
+                  id: { _serialized: p.id._serialized || p.id }
+                }));
+              }
+              // @ts-ignore
+              if (window.Store.GroupMetadata) {
+                // @ts-ignore
+                const gMeta = window.Store.GroupMetadata.get(sId);
+                if (gMeta && gMeta.participants) {
+                  return gMeta.participants.map((p: any) => ({
+                    id: { _serialized: p.id._serialized || p.id }
+                  }));
+                }
+              }
+            } catch (e) {}
+            return [];
+          }, sourceGroupId);
+          
+          if (remoteParticipants && remoteParticipants.length > 0) {
+            console.log(`Encontrados ${remoteParticipants.length} participantes via fallback profundo`);
+            sourceParticipants = remoteParticipants;
+          }
+        } catch (e) {}
       }
 
       const targetParticipants = (targetChatFresh as any).participants || [];
 
-      console.log(`Source group: ${(sourceChatFresh as any).name} (${sourceParticipants.length} parts)`);
-      console.log(`Target group: ${(targetChatFresh as any).name} (${targetParticipants.length} parts)`);
+      console.log(`Source group: ${(sourceChatFresh as any).name} (${sourceParticipants.length} participantes)`);
+      console.log(`Target group: ${(targetChatFresh as any).name} (${targetParticipants.length} participantes)`);
 
       const targetMemberIds = new Set(targetParticipants.map((p: any) => p.id._serialized));
       const membersToAdd = sourceParticipants
@@ -234,15 +260,15 @@ export async function registerRoutes(
       console.log(`Filtered members to add: ${membersToAdd.length}`);
 
       if (membersToAdd.length === 0) {
-        let msg = "Todos os membros do grupo de origem já estão no grupo de destino.";
+        let msg = "Todos os membros já estão no grupo de destino.";
         if (sourceParticipants.length === 0) {
-           msg = "Não foi possível carregar os membros do grupo. Certifique-se de que você é administrador e o grupo está ativo no seu celular. Tente enviar uma mensagem no grupo para acordá-lo.";
+           msg = "O WhatsApp ainda não sincronizou os membros deste grupo. \n\nComo você não é administrador, siga estes passos: \n1. Abra o grupo de origem no seu celular.\n2. Envie qualquer mensagem lá (ex: '.').\n3. Aguarde 3 segundos e tente novamente aqui.";
         }
         return res.json({ 
           message: msg, 
           added: 0, 
           failed: 0, 
-          details: sourceParticipants.length === 0 ? ["Zero participantes encontrados na origem."] : [] 
+          details: [] 
         });
       }
 

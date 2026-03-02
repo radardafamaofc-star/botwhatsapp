@@ -161,12 +161,23 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
 
 function TransferDashboard() {
   const { toast } = useToast();
-  const { data: groups, isLoading: isGroupsLoading } = useGroups(true);
+  const { data: groups, isLoading: isGroupsLoading, error: groupsError } = useGroups(true);
   const { mutate: disconnect } = useDisconnectSession();
   const { mutate: moveMembers, isPending: isMoving } = useMoveMembers();
 
   const [sourceId, setSourceId] = useState<string>("");
   const [targetId, setTargetId] = useState<string>("");
+
+  if (groupsError) {
+    return (
+      <div className="glass-card rounded-3xl p-10 flex flex-col items-center justify-center text-center space-y-4">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h2 className="text-xl font-bold">Erro ao carregar grupos</h2>
+        <p className="text-muted-foreground">Sua conexão pode ter caído. Tente reconectar.</p>
+        <button onClick={() => disconnect()} className="px-6 py-2 bg-primary text-white rounded-xl">Reconectar</button>
+      </div>
+    );
+  }
 
   const handleTransfer = () => {
     if (!sourceId || !targetId) return;
@@ -214,6 +225,20 @@ function TransferDashboard() {
             <LogOut className="h-4 w-4" />
             Desconectar
           </button>
+        </div>
+
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 mb-8 text-sm text-blue-800 dark:text-blue-200 flex gap-3 shadow-sm">
+          <div className="mt-0.5">
+            <Info className="h-5 w-5 text-blue-500" />
+          </div>
+          <div>
+            <h3 className="font-bold mb-1">Dica de Sincronização</h3>
+            <p>
+              Se a lista de membros do <strong>Grupo de Origem</strong> estiver vazia, abra o grupo no seu celular, 
+              envie uma mensagem qualquer (ex: ".") e aguarde 3 segundos antes de tentar novamente aqui. 
+              Isso força o WhatsApp a atualizar a lista de participantes.
+            </p>
+          </div>
         </div>
 
         {isGroupsLoading ? (
