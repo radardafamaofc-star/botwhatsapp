@@ -14,19 +14,25 @@ const SESSION_ID = 'default-session';
 function clearChromiumLocks() {
   const authDir = path.join(process.cwd(), '.wwebjs_auth');
   try {
+    if (!fs.existsSync(authDir)) return;
     const sessionDirs = fs.readdirSync(authDir);
     for (const dir of sessionDirs) {
       const sessionPath = path.join(authDir, dir);
+      if (!fs.lstatSync(sessionPath).isDirectory()) continue;
       for (const lockFile of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
         const lockPath = path.join(sessionPath, lockFile);
         if (fs.existsSync(lockPath)) {
-          fs.unlinkSync(lockPath);
-          console.log(`Removed stale lock: ${lockPath}`);
+          try {
+            fs.unlinkSync(lockPath);
+            console.log(`Removed stale lock: ${lockPath}`);
+          } catch (e) {
+            console.error(`Failed to remove lock ${lockPath}:`, e);
+          }
         }
       }
     }
   } catch (e) {
-    // Auth dir may not exist yet, that's fine
+    console.error("Error clearing locks:", e);
   }
 }
 
@@ -57,19 +63,18 @@ export async function registerRoutes(
   app.post(api.session.connect.path, async (req, res) => {
     console.log("POST /api/session/connect received");
     
+    // Force cleanup of any existing client and locks before starting
     if (whatsappClient) {
-      const current = await storage.getSession(SESSION_ID);
-      console.log("WhatsApp client already exists, current status:", current?.status);
-      
-      // If status is disconnected or stuck, destroy old client and allow reconnect
-      if (current?.status === 'disconnected' || current?.status === 'starting') {
-        console.log("Destroying stale client to allow fresh connection...");
-        try { await whatsappClient.destroy(); } catch (e) {}
-        whatsappClient = null;
-      } else {
-        return res.json({ message: "Already connecting or connected." });
+      console.log("Destroying existing WhatsApp client...");
+      try { 
+        await whatsappClient.destroy(); 
+      } catch (e) {
+        console.error("Error destroying client:", e);
       }
+      whatsappClient = null;
     }
+    
+    clearChromiumLocks();
 
     console.log("Initializing WhatsApp connection...");
     try {
@@ -77,15 +82,27 @@ export async function registerRoutes(
       
       whatsappClient = new Client({
         authStrategy: new LocalAuth({ clientId: SESSION_ID }),
+        webVersionCache: {
+          type: 'remote',
+          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        },
         puppeteer: {
           headless: true,
+          handleSIGINT: false,
+          handleSIGTERM: false,
+          handleSIGHUP: false,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--no-zygote',
-            '--single-process'
+            '--single-process',
+            '--disable-extensions',
+            '--disable-thread-priority',
+            '--disable-setuid-sandbox',
+            '--proxy-server="direct://"',
+            '--proxy-bypass-list=*'
           ],
           executablePath: '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser'
         }
