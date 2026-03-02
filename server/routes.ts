@@ -5,7 +5,38 @@ import { api } from "@shared/routes";
 import pkg from "whatsapp-web.js";
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
 const { Client, LocalAuth } = pkg;
+
+function findChromiumPath(): string | undefined {
+  // Try common paths
+  const candidates = [
+    '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+  ];
+  
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      console.log(`[WA] Found Chromium at: ${p}`);
+      return p;
+    }
+  }
+  
+  // Try `which`
+  try {
+    const result = execSync('which chromium-browser || which chromium || which google-chrome 2>/dev/null').toString().trim();
+    if (result) {
+      console.log(`[WA] Found Chromium via which: ${result}`);
+      return result;
+    }
+  } catch {}
+  
+  console.log('[WA] No Chromium found, letting Puppeteer use bundled browser');
+  return undefined;
+}
 
 // Global client instance
 let whatsappClient: InstanceType<typeof Client> | null = null;
@@ -80,42 +111,36 @@ export async function registerRoutes(
     try {
       await storage.updateSession(SESSION_ID, { status: 'starting', qrCode: null });
       
+      const chromiumPath = findChromiumPath();
+      console.log(`[WA] Using Chromium path: ${chromiumPath || 'bundled'}`);
+      
+      const puppeteerConfig: any = {
+        headless: true,
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-zygote',
+          '--single-process',
+          '--disable-extensions',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--mute-audio'
+        ],
+      };
+      
+      if (chromiumPath) {
+        puppeteerConfig.executablePath = chromiumPath;
+      }
+      
       whatsappClient = new Client({
         authStrategy: new LocalAuth({ clientId: SESSION_ID }),
-        webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-        },
-        puppeteer: {
-          headless: true,
-          handleSIGINT: false,
-          handleSIGTERM: false,
-          handleSIGHUP: false,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-zygote',
-            '--single-process',
-            '--disable-extensions',
-            '--disable-thread-priority',
-            '--proxy-server="direct://"',
-            '--proxy-bypass-list=*',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-breakpad',
-            '--disable-component-extensions-with-background-pages',
-            '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-            '--disable-ipc-flooding-protection',
-            '--disable-renderer-backgrounding',
-            '--enable-features=NetworkService,NetworkServiceInProcess',
-            '--force-color-profile=srgb',
-            '--metrics-recording-only',
-            '--mute-audio'
-          ],
-          executablePath: '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser'
-        }
+        puppeteer: puppeteerConfig
       });
 
       const initTimeout = setTimeout(async () => {
