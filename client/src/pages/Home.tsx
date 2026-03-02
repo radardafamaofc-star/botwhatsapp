@@ -25,8 +25,9 @@ export default function Home() {
   const { data: session, isLoading: isSessionLoading } = useSessionStatus();
   const [transferInProgress, setTransferInProgress] = useState(false);
   
-  // Keep showing TransferDashboard if a transfer is in progress, even if status changes
-  const effectiveStatus = transferInProgress ? "connected" : (session?.status || "disconnected");
+  const rawStatus = session?.status || "disconnected";
+  // Only keep TransferDashboard visible during active transfer; otherwise use real status
+  const effectiveStatus = transferInProgress ? "connected" : rawStatus;
   
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
@@ -66,7 +67,7 @@ export default function Home() {
               )}
               
               {effectiveStatus === "connected" && (
-                <TransferDashboard key="connected" onTransferStateChange={setTransferInProgress} />
+                <TransferDashboard key="connected" onTransferStateChange={setTransferInProgress} sessionStatus={rawStatus} />
               )}
             </AnimatePresence>
           )}
@@ -164,7 +165,7 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
   );
 }
 
-function TransferDashboard({ onTransferStateChange }: { onTransferStateChange?: (v: boolean) => void }) {
+function TransferDashboard({ onTransferStateChange, sessionStatus }: { onTransferStateChange?: (v: boolean) => void; sessionStatus?: string }) {
   const { toast } = useToast();
   const { data: groups, isLoading: isGroupsLoading, error: groupsError, refetch: refetchGroups } = useGroups(true);
   const { mutate: disconnect } = useDisconnectSession();
@@ -177,6 +178,11 @@ function TransferDashboard({ onTransferStateChange }: { onTransferStateChange?: 
 
   const [sourceId, setSourceId] = useState<string>("");
   const [targetId, setTargetId] = useState<string>("");
+
+  // If session is actually disconnected and we're not transferring, show nothing (parent will show connect screen)
+  if (groupsError && sessionStatus === "disconnected" && !isMoving) {
+    return null; // Let parent component show ConnectionPrompt
+  }
 
   if (groupsError) {
     return (
