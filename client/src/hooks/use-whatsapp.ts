@@ -67,9 +67,10 @@ export function useGroups(enabled: boolean = true) {
       const res = await fetch(api.groups.list.path);
       if (!res.ok) throw new Error("Failed to fetch groups");
       const data = await res.json();
-      return parseWithLogging(api.groups.list.responses[200], data, "groups.list");
+      return data as Array<{ id: string; name: string }>;
     },
     enabled,
+    retry: 2,
   });
 }
 
