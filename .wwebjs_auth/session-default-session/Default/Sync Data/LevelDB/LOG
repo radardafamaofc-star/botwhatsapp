@@ -1,3 +1,2 @@
-2026/03/02-02:29:00.590 50f Reusing MANIFEST /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Sync Data/LevelDB/MANIFEST-000001
-2026/03/02-02:29:00.685 50f Recovering log #3
-2026/03/02-02:29:00.685 50f Reusing old log /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Sync Data/LevelDB/000003.log 
+2026/03/02-02:54:06.302 10b3 Creating DB /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Sync Data/LevelDB since it was missing.
+2026/03/02-02:54:06.317 10b3 Reusing MANIFEST /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Sync Data/LevelDB/MANIFEST-000001

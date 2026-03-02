@@ -1,3 +1,2 @@
-2026/03/02-02:29:00.806 516 Reusing MANIFEST /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Site Characteristics Database/MANIFEST-000001
-2026/03/02-02:29:00.806 516 Recovering log #3
-2026/03/02-02:29:00.806 516 Reusing old log /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Site Characteristics Database/000003.log 
+2026/03/02-02:54:06.308 10bd Creating DB /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Site Characteristics Database since it was missing.
+2026/03/02-02:54:06.318 10bd Reusing MANIFEST /home/runner/workspace/.wwebjs_auth/session-default-session/Default/Site Characteristics Database/MANIFEST-000001
