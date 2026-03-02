@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -23,6 +23,10 @@ import {
 
 export default function Home() {
   const { data: session, isLoading: isSessionLoading } = useSessionStatus();
+  const [transferInProgress, setTransferInProgress] = useState(false);
+  
+  // Keep showing TransferDashboard if a transfer is in progress, even if status changes
+  const effectiveStatus = transferInProgress ? "connected" : (session?.status || "disconnected");
   
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
@@ -53,16 +57,16 @@ export default function Home() {
             </div>
           ) : (
             <AnimatePresence mode="wait">
-              {session?.status === "disconnected" && (
+              {effectiveStatus === "disconnected" && (
                 <ConnectionPrompt key="disconnected" />
               )}
               
-              {session?.status === "qr_ready" && session.qrCode && (
+              {effectiveStatus === "qr_ready" && session?.qrCode && (
                 <QRCodeDisplay key="qr" qrCode={session.qrCode} />
               )}
               
-              {session?.status === "connected" && (
-                <TransferDashboard key="connected" />
+              {effectiveStatus === "connected" && (
+                <TransferDashboard key="connected" onTransferStateChange={setTransferInProgress} />
               )}
             </AnimatePresence>
           )}
@@ -160,11 +164,16 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
   );
 }
 
-function TransferDashboard() {
+function TransferDashboard({ onTransferStateChange }: { onTransferStateChange?: (v: boolean) => void }) {
   const { toast } = useToast();
   const { data: groups, isLoading: isGroupsLoading, error: groupsError } = useGroups(true);
   const { mutate: disconnect } = useDisconnectSession();
   const { mutate: moveMembers, isPending: isMoving } = useMoveMembers();
+
+  useEffect(() => {
+    onTransferStateChange?.(isMoving);
+  }, [isMoving, onTransferStateChange]);
+
 
   const [sourceId, setSourceId] = useState<string>("");
   const [targetId, setTargetId] = useState<string>("");
