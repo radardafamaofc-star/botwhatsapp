@@ -134,17 +134,46 @@ export async function registerRoutes(
     if (!whatsappClient) {
       return res.status(500).json({ message: "WhatsApp client not connected." });
     }
-    try {
-      const chats = await whatsappClient.getChats();
-      const groups = chats
-        .filter((chat: any) => chat.isGroup)
-        .map((chat: any) => ({
-          id: chat.id._serialized,
-          name: chat.name
-        }));
-      res.json(groups);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch groups." });
+    
+    // Check if client is really ready
+    const state = await whatsappClient.getState().catch(() => null);
+    if (state !== 'CONNECTED') {
+      console.log(`[Groups] Client state is "${state}", not CONNECTED`);
+      return res.status(503).json({ message: `WhatsApp não está conectado (estado: ${state}). Reconecte e tente novamente.` });
+    }
+
+    // Retry logic: try up to 3 times with small delays
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`[Groups] Fetching chats (attempt ${attempt}/3)...`);
+        const chats = await Promise.race([
+          whatsappClient.getChats(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("getChats timeout")), 10000))
+        ]);
+        
+        const groups = chats
+          .filter((chat: any) => chat.isGroup)
+          .map((chat: any) => ({
+            id: chat.id._serialized,
+            name: chat.name
+          }));
+        
+        console.log(`[Groups] Found ${groups.length} groups on attempt ${attempt}`);
+        
+        if (groups.length > 0 || attempt === 3) {
+          return res.json(groups);
+        }
+        
+        // If 0 groups found and not last attempt, wait and retry
+        console.log(`[Groups] No groups found, retrying in 2s...`);
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (error: any) {
+        console.error(`[Groups] Attempt ${attempt} failed:`, error.message);
+        if (attempt === 3) {
+          return res.status(500).json({ message: `Falha ao carregar grupos: ${error.message}` });
+        }
+        await new Promise(r => setTimeout(r, 1500));
+      }
     }
   });
 
