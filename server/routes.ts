@@ -120,49 +120,65 @@ export async function registerRoutes(
 
       const initTimeout = setTimeout(async () => {
         const currentSession = await storage.getSession(SESSION_ID);
-        if (currentSession?.status === 'starting') {
-           console.log("Initialization timed out after 45s, resetting status.");
+        if (currentSession?.status === 'starting' || currentSession?.status === 'qr_ready') {
+           console.log("[WA] Initialization timed out after 120s, resetting status.");
            await storage.updateSession(SESSION_ID, { status: 'disconnected', qrCode: null });
            if (whatsappClient) {
              try { await whatsappClient.destroy(); } catch (e) {}
              whatsappClient = null;
            }
         }
-      }, 45000);
+      }, 120000);
+
+      whatsappClient.on('loading_screen', (percent: any, message: any) => {
+        console.log(`[WA] Loading: ${percent}% - ${message}`);
+      });
 
       whatsappClient.on('qr', async (qr: any) => {
         clearTimeout(initTimeout);
-        console.log('QR RECEIVED:', qr);
+        console.log('[WA] QR RECEIVED, length:', qr?.length);
         try {
           await storage.updateSession(SESSION_ID, { status: 'qr_ready', qrCode: qr });
+          console.log('[WA] Session updated to qr_ready');
         } catch (err) {
-          console.error('Error updating session with QR:', err);
+          console.error('[WA] Error updating session with QR:', err);
         }
       });
 
+      whatsappClient.on('authenticated', async () => {
+        console.log('[WA] AUTHENTICATED');
+      });
+
       whatsappClient.on('ready', async () => {
-        console.log('CLIENT IS READY');
+        console.log('[WA] CLIENT IS READY');
+        clearTimeout(initTimeout);
         try {
           await storage.updateSession(SESSION_ID, { status: 'connected', qrCode: null });
         } catch (err) {
-          console.error('Error updating session to connected:', err);
+          console.error('[WA] Error updating session to connected:', err);
         }
       });
 
       whatsappClient.on('auth_failure', async (msg: any) => {
-        console.error('AUTHENTICATION FAILURE', msg);
+        console.error('[WA] AUTHENTICATION FAILURE', msg);
+        clearTimeout(initTimeout);
         await storage.updateSession(SESSION_ID, { status: 'disconnected', qrCode: null });
         whatsappClient = null;
       });
 
-      whatsappClient.on('disconnected', async () => {
-        console.log('CLIENT DISCONNECTED');
+      whatsappClient.on('disconnected', async (reason: any) => {
+        console.log('[WA] CLIENT DISCONNECTED, reason:', reason);
+        clearTimeout(initTimeout);
         await storage.updateSession(SESSION_ID, { status: 'disconnected', qrCode: null });
         whatsappClient = null;
       });
 
-      whatsappClient.initialize().catch(async (err: any) => {
-        console.error("Initialization error:", err);
+      console.log('[WA] Calling initialize()...');
+      whatsappClient.initialize().then(() => {
+        console.log('[WA] initialize() resolved successfully');
+      }).catch(async (err: any) => {
+        clearTimeout(initTimeout);
+        console.error("[WA] initialize() FAILED:", err?.message || err);
         await storage.updateSession(SESSION_ID, { status: 'disconnected', qrCode: null });
         whatsappClient = null;
       });
