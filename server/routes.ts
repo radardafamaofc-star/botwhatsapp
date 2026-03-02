@@ -114,33 +114,32 @@ export async function registerRoutes(
       const chromiumPath = findChromiumPath();
       console.log(`[WA] Using Chromium path: ${chromiumPath || 'bundled'}`);
       
-      const puppeteerConfig: any = {
-        headless: true,
-        handleSIGINT: false,
-        handleSIGTERM: false,
-        handleSIGHUP: false,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--mute-audio'
-        ],
-      };
-      
-      if (chromiumPath) {
-        puppeteerConfig.executablePath = chromiumPath;
-      }
-      
       whatsappClient = new Client({
         authStrategy: new LocalAuth({ clientId: SESSION_ID }),
-        puppeteer: puppeteerConfig
+        webVersionCache: {
+          type: 'remote',
+          remotePath: 'https://raw.githubusercontent.com/AkariUC/webwhatsapp-version/main/2.2412.54.html',
+        },
+        puppeteer: {
+          headless: true,
+          handleSIGINT: false,
+          handleSIGTERM: false,
+          handleSIGHUP: false,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process',
+            '--disable-extensions',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--mute-audio'
+          ],
+          ...(chromiumPath ? { executablePath: chromiumPath } : {})
+        }
       });
 
       const initTimeout = setTimeout(async () => {
