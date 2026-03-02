@@ -77,19 +77,33 @@ export function useMoveMembers() {
   return useMutation({
     mutationFn: async (input: z.infer<typeof api.groups.moveMembers.input>) => {
       const validated = api.groups.moveMembers.input.parse(input);
-      const res = await fetch(api.groups.moveMembers.path, {
-        method: api.groups.moveMembers.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
-      });
       
-      const data = await res.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
       
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to move members");
+      try {
+        const res = await fetch(api.groups.moveMembers.path, {
+          method: api.groups.moveMembers.method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(validated),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.message || "Failed to move members");
+        }
+        
+        return parseWithLogging(api.groups.moveMembers.responses[200], data, "groups.moveMembers");
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error("A transferência demorou demais. O servidor pode ainda estar processando. Verifique o grupo de destino.");
+        }
+        throw err;
       }
-      
-      return parseWithLogging(api.groups.moveMembers.responses[200], data, "groups.moveMembers");
     },
   });
 }
