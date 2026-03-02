@@ -6,7 +6,7 @@ import pkg from "whatsapp-web.js";
 const { Client, LocalAuth } = pkg;
 
 // Global client instance
-let whatsappClient: Client | null = null;
+let whatsappClient: InstanceType<typeof Client> | null = null;
 const SESSION_ID = 'default-session';
 
 export async function registerRoutes(
@@ -72,7 +72,7 @@ export async function registerRoutes(
         }
       }, 45000);
 
-      whatsappClient.on('qr', async (qr) => {
+      whatsappClient.on('qr', async (qr: any) => {
         clearTimeout(initTimeout);
         console.log('QR RECEIVED:', qr);
         try {
@@ -91,7 +91,7 @@ export async function registerRoutes(
         }
       });
 
-      whatsappClient.on('auth_failure', async (msg) => {
+      whatsappClient.on('auth_failure', async (msg: any) => {
         console.error('AUTHENTICATION FAILURE', msg);
         await storage.updateSession(SESSION_ID, { status: 'disconnected', qrCode: null });
         whatsappClient = null;
@@ -103,7 +103,7 @@ export async function registerRoutes(
         whatsappClient = null;
       });
 
-      whatsappClient.initialize().catch(async (err) => {
+      whatsappClient.initialize().catch(async (err: any) => {
         console.error("Initialization error:", err);
         await storage.updateSession(SESSION_ID, { status: 'disconnected', qrCode: null });
         whatsappClient = null;
@@ -137,8 +137,8 @@ export async function registerRoutes(
     try {
       const chats = await whatsappClient.getChats();
       const groups = chats
-        .filter(chat => chat.isGroup)
-        .map(chat => ({
+        .filter((chat: any) => chat.isGroup)
+        .map((chat: any) => ({
           id: chat.id._serialized,
           name: chat.name
         }));
