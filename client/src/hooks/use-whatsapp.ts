@@ -64,13 +64,29 @@ export function useGroups(enabled: boolean = true) {
   return useQuery({
     queryKey: [api.groups.list.path],
     queryFn: async () => {
-      const res = await fetch(api.groups.list.path);
-      if (!res.ok) throw new Error("Failed to fetch groups");
-      const data = await res.json();
-      return data as Array<{ id: string; name: string }>;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      
+      try {
+        const res = await fetch(api.groups.list.path, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error((errData as any).message || "Failed to fetch groups");
+        }
+        const data = await res.json();
+        return data as Array<{ id: string; name: string }>;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error("Timeout ao carregar grupos. O WhatsApp pode ter desconectado.");
+        }
+        throw err;
+      }
     },
     enabled,
-    retry: 2,
+    retry: 1,
+    retryDelay: 3000,
   });
 }
 
