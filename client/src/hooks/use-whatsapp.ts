@@ -85,8 +85,9 @@ export function useGroups(enabled: boolean = true) {
       }
     },
     enabled,
-    retry: 1,
-    retryDelay: 3000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(2000 * (attempt + 1), 10000),
+    staleTime: 30000,
   });
 }
 

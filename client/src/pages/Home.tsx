@@ -194,22 +194,8 @@ function TransferDashboard({ onTransferStateChange, onDisconnect }: { onTransfer
     onDisconnect?.();
   };
 
-  // During active transfer, show transfer UI even if groups error
-  if (groupsError && !isMoving) {
-    return (
-      <div className="glass-card rounded-3xl p-10 flex flex-col items-center justify-center text-center space-y-4">
-        <AlertCircle className="h-12 w-12 text-destructive" />
-        <h2 className="text-xl font-bold">Erro ao carregar grupos</h2>
-        <p className="text-muted-foreground">Sua conexão pode ter caído. Tente recarregar ou reconectar.</p>
-        <div className="flex gap-3">
-          <button onClick={() => refetchGroups()} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-semibold flex items-center gap-2">
-            <RefreshCcw className="h-4 w-4" /> Tentar novamente
-          </button>
-          <button onClick={handleDisconnect} className="px-6 py-2 border-2 border-border text-muted-foreground rounded-xl font-semibold hover:bg-muted transition-colors">Reconectar</button>
-        </div>
-      </div>
-    );
-  }
+  // Inline error banner instead of blocking the whole UI
+  const hasGroups = groups && groups.length > 0;
 
   const handleTransfer = () => {
     if (!sourceId || !targetId) return;
@@ -272,6 +258,19 @@ function TransferDashboard({ onTransferStateChange, onDisconnect }: { onTransfer
             </p>
           </div>
         </div>
+
+        {/* Inline error banner for groups */}
+        {groupsError && !isGroupsLoading && (
+          <div className="rounded-2xl p-4 mb-8 bg-destructive/10 border border-destructive/20 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-destructive font-medium text-sm">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              Erro ao carregar grupos. Tentando novamente...
+            </div>
+            <button onClick={() => refetchGroups()} className="px-4 py-1.5 bg-primary text-primary-foreground rounded-xl font-semibold text-sm flex items-center gap-2 shrink-0">
+              <RefreshCcw className="h-3.5 w-3.5" /> Recarregar
+            </button>
+          </div>
+        )}
 
         {isGroupsLoading ? (
           <div className="h-48 flex items-center justify-center">
