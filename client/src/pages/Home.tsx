@@ -77,15 +77,17 @@ function StatusBadge({ status }: { status: string }) {
   const config = {
     connected: { color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", icon: CheckCircle2, text: "Connected" },
     qr_ready: { color: "bg-amber-500/10 text-amber-600 border-amber-500/20", icon: RefreshCcw, text: "Awaiting Scan" },
+    starting: { color: "bg-blue-500/10 text-blue-600 border-blue-500/20", icon: Loader2, text: "Starting..." },
     disconnected: { color: "bg-slate-500/10 text-slate-600 border-slate-500/20", icon: Smartphone, text: "Disconnected" }
-  }[status as keyof typeof config] || config.disconnected;
+  };
 
-  const Icon = config.icon;
+  const currentConfig = config[status as keyof typeof config] || config.disconnected;
+  const Icon = currentConfig.icon;
 
   return (
-    <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${config.color} font-semibold text-sm transition-colors`}>
-      <Icon className="h-4 w-4" />
-      {config.text}
+    <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${currentConfig.color} font-semibold text-sm transition-colors`}>
+      <Icon className={`h-4 w-4 ${status === 'starting' ? 'animate-spin' : ''}`} />
+      {currentConfig.text}
     </div>
   );
 }
