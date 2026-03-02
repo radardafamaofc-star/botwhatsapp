@@ -166,7 +166,7 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
 
 function TransferDashboard({ onTransferStateChange }: { onTransferStateChange?: (v: boolean) => void }) {
   const { toast } = useToast();
-  const { data: groups, isLoading: isGroupsLoading, error: groupsError } = useGroups(true);
+  const { data: groups, isLoading: isGroupsLoading, error: groupsError, refetch: refetchGroups } = useGroups(true);
   const { mutate: disconnect } = useDisconnectSession();
   const { mutate: moveMembers, isPending: isMoving } = useMoveMembers();
 
@@ -183,8 +183,13 @@ function TransferDashboard({ onTransferStateChange }: { onTransferStateChange?: 
       <div className="glass-card rounded-3xl p-10 flex flex-col items-center justify-center text-center space-y-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <h2 className="text-xl font-bold">Erro ao carregar grupos</h2>
-        <p className="text-muted-foreground">Sua conexão pode ter caído. Tente reconectar.</p>
-        <button onClick={() => disconnect()} className="px-6 py-2 bg-primary text-white rounded-xl">Reconectar</button>
+        <p className="text-muted-foreground">Sua conexão pode ter caído. Tente recarregar ou reconectar.</p>
+        <div className="flex gap-3">
+          <button onClick={() => refetchGroups()} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-semibold flex items-center gap-2">
+            <RefreshCcw className="h-4 w-4" /> Tentar novamente
+          </button>
+          <button onClick={() => disconnect()} className="px-6 py-2 border-2 border-border text-muted-foreground rounded-xl font-semibold hover:bg-muted transition-colors">Reconectar</button>
+        </div>
       </div>
     );
   }
