@@ -79,7 +79,7 @@ export function useMoveMembers() {
       const validated = api.groups.moveMembers.input.parse(input);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
       
       try {
         const res = await fetch(api.groups.moveMembers.path, {
@@ -96,11 +96,12 @@ export function useMoveMembers() {
           throw new Error(data.message || "Failed to move members");
         }
         
-        return parseWithLogging(api.groups.moveMembers.responses[200], data, "groups.moveMembers");
+        // Return data directly without strict Zod validation
+        return data as { message: string; added: number; failed: number; details?: string[] };
       } catch (err: any) {
         clearTimeout(timeoutId);
         if (err.name === 'AbortError') {
-          throw new Error("A transferência demorou demais. O servidor pode ainda estar processando. Verifique o grupo de destino.");
+          throw new Error("A transferência demorou demais. Verifique o grupo de destino.");
         }
         throw err;
       }
