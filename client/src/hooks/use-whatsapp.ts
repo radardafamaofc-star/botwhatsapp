@@ -29,15 +29,27 @@ export function useConnectSession() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch(api.session.connect.path, {
-        method: api.session.connect.method,
-      });
-      if (!res.ok) throw new Error("Failed to initiate connection");
-      const data = await res.json();
-      return parseWithLogging(api.session.connect.responses[200], data, "session.connect");
+      console.log("[WA-UI] Sending POST to", api.session.connect.path);
+      try {
+        const res = await fetch(api.session.connect.path, {
+          method: api.session.connect.method,
+        });
+        console.log("[WA-UI] Response status:", res.status);
+        const data = await res.json();
+        console.log("[WA-UI] Response data:", data);
+        if (!res.ok) throw new Error(data?.message || "Failed to initiate connection");
+        return data;
+      } catch (err: any) {
+        console.error("[WA-UI] Connect error:", err);
+        throw err;
+      }
     },
     onSuccess: () => {
+      console.log("[WA-UI] Connect mutation success, invalidating status query");
       queryClient.invalidateQueries({ queryKey: [api.session.status.path] });
+    },
+    onError: (err: any) => {
+      console.error("[WA-UI] Connect mutation error:", err.message);
     },
   });
 }
