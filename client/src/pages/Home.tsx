@@ -24,10 +24,21 @@ import {
 export default function Home() {
   const { data: session, isLoading: isSessionLoading } = useSessionStatus();
   const [transferInProgress, setTransferInProgress] = useState(false);
+  const [wasConnected, setWasConnected] = useState(false);
   
   const rawStatus = session?.status || "disconnected";
-  // Only keep TransferDashboard visible during active transfer; otherwise use real status
-  const effectiveStatus = transferInProgress ? "connected" : rawStatus;
+  
+  // Latch: once connected, stay in connected view until user explicitly disconnects
+  useEffect(() => {
+    if (rawStatus === "connected") setWasConnected(true);
+  }, [rawStatus]);
+  
+  const handleDisconnect = () => setWasConnected(false);
+  
+  // Show transfer dashboard if currently connected, OR was connected and transfer is running
+  const showDashboard = rawStatus === "connected" || (wasConnected && transferInProgress);
+  const showQR = !showDashboard && rawStatus === "qr_ready" && !!session?.qrCode;
+  const showConnect = !showDashboard && !showQR;
   
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
@@ -58,16 +69,16 @@ export default function Home() {
             </div>
           ) : (
             <AnimatePresence mode="wait">
-              {effectiveStatus === "disconnected" && (
+              {showConnect && (
                 <ConnectionPrompt key="disconnected" />
               )}
               
-              {effectiveStatus === "qr_ready" && session?.qrCode && (
+              {showQR && session?.qrCode && (
                 <QRCodeDisplay key="qr" qrCode={session.qrCode} />
               )}
               
-              {effectiveStatus === "connected" && (
-                <TransferDashboard key="connected" onTransferStateChange={setTransferInProgress} sessionStatus={rawStatus} />
+              {showDashboard && (
+                <TransferDashboard key="connected" onTransferStateChange={setTransferInProgress} onDisconnect={handleDisconnect} />
               )}
             </AnimatePresence>
           )}
@@ -165,7 +176,7 @@ function QRCodeDisplay({ qrCode }: { qrCode: string }) {
   );
 }
 
-function TransferDashboard({ onTransferStateChange, sessionStatus }: { onTransferStateChange?: (v: boolean) => void; sessionStatus?: string }) {
+function TransferDashboard({ onTransferStateChange, onDisconnect }: { onTransferStateChange?: (v: boolean) => void; onDisconnect?: () => void }) {
   const { toast } = useToast();
   const { data: groups, isLoading: isGroupsLoading, error: groupsError, refetch: refetchGroups } = useGroups(true);
   const { mutate: disconnect } = useDisconnectSession();
@@ -175,16 +186,16 @@ function TransferDashboard({ onTransferStateChange, sessionStatus }: { onTransfe
     onTransferStateChange?.(isMoving);
   }, [isMoving, onTransferStateChange]);
 
-
   const [sourceId, setSourceId] = useState<string>("");
   const [targetId, setTargetId] = useState<string>("");
 
-  // If session is actually disconnected and we're not transferring, show nothing (parent will show connect screen)
-  if (groupsError && sessionStatus === "disconnected" && !isMoving) {
-    return null; // Let parent component show ConnectionPrompt
-  }
+  const handleDisconnect = () => {
+    disconnect();
+    onDisconnect?.();
+  };
 
-  if (groupsError) {
+  // During active transfer, show transfer UI even if groups error
+  if (groupsError && !isMoving) {
     return (
       <div className="glass-card rounded-3xl p-10 flex flex-col items-center justify-center text-center space-y-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
@@ -194,7 +205,7 @@ function TransferDashboard({ onTransferStateChange, sessionStatus }: { onTransfe
           <button onClick={() => refetchGroups()} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-semibold flex items-center gap-2">
             <RefreshCcw className="h-4 w-4" /> Tentar novamente
           </button>
-          <button onClick={() => disconnect()} className="px-6 py-2 border-2 border-border text-muted-foreground rounded-xl font-semibold hover:bg-muted transition-colors">Reconectar</button>
+          <button onClick={handleDisconnect} className="px-6 py-2 border-2 border-border text-muted-foreground rounded-xl font-semibold hover:bg-muted transition-colors">Reconectar</button>
         </div>
       </div>
     );
@@ -240,7 +251,7 @@ function TransferDashboard({ onTransferStateChange, sessionStatus }: { onTransfe
             <p className="text-muted-foreground mt-1">Mova membros com segurança entre seus grupos administrados.</p>
           </div>
           <button
-            onClick={() => disconnect()}
+            onClick={handleDisconnect}
             className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-muted-foreground font-semibold hover:bg-muted hover:text-foreground transition-all"
           >
             <LogOut className="h-4 w-4" />
