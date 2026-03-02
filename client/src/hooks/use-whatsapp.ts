@@ -21,7 +21,7 @@ export function useSessionStatus() {
       const data = await res.json();
       return parseWithLogging(api.session.status.responses[200], data, "session.status");
     },
-    refetchInterval: 2000, // Poll every 2 seconds
+    refetchInterval: 3000, // Poll every 3 seconds
   });
 }
 
