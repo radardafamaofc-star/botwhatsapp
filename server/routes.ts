@@ -100,9 +100,19 @@ export async function registerRoutes(
             '--single-process',
             '--disable-extensions',
             '--disable-thread-priority',
-            '--disable-setuid-sandbox',
             '--proxy-server="direct://"',
-            '--proxy-bypass-list=*'
+            '--proxy-bypass-list=*',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-breakpad',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+            '--disable-ipc-flooding-protection',
+            '--disable-renderer-backgrounding',
+            '--enable-features=NetworkService,NetworkServiceInProcess',
+            '--force-color-profile=srgb',
+            '--metrics-recording-only',
+            '--mute-audio'
           ],
           executablePath: '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium-browser'
         }
@@ -196,7 +206,7 @@ export async function registerRoutes(
         console.log(`[Groups] Fetching chats (attempt ${attempt}/3)...`);
         const chats = await Promise.race([
           whatsappClient.getChats(),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("getChats timeout")), 10000))
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("getChats timeout")), 15000))
         ]);
         
         const groups = chats
@@ -208,6 +218,7 @@ export async function registerRoutes(
         
         console.log(`[Groups] Found ${groups.length} groups on attempt ${attempt}`);
         
+        // Return all groups, regardless of admin status
         if (groups.length > 0 || attempt === 3) {
           return res.json(groups);
         }
@@ -220,7 +231,7 @@ export async function registerRoutes(
         if (attempt === 3) {
           return res.status(500).json({ message: `Falha ao carregar grupos: ${error.message}` });
         }
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 2000));
       }
     }
   });
