@@ -125,6 +125,11 @@ export async function registerRoutes(
       const chromiumPath = findChromiumPath();
       console.log(`[WA] Using Chromium path: ${chromiumPath || 'bundled'}`);
       
+      // Use a fresh temp dir for user data to avoid profile lock issues
+      const userDataDir = path.join(process.cwd(), '.wwebjs_auth', `session-${SESSION_ID}`, 'puppeteer_data_' + Date.now());
+      fs.mkdirSync(userDataDir, { recursive: true });
+      console.log(`[WA] Using fresh userDataDir: ${userDataDir}`);
+
       whatsappClient = new Client({
         authStrategy: new LocalAuth({ clientId: SESSION_ID }),
         webVersionCache: {
@@ -136,6 +141,7 @@ export async function registerRoutes(
           handleSIGINT: false,
           handleSIGTERM: false,
           handleSIGHUP: false,
+          userDataDir,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -147,7 +153,8 @@ export async function registerRoutes(
             '--disable-background-timer-throttling',
             '--disable-backgrounding-occluded-windows',
             '--disable-renderer-backgrounding',
-            '--mute-audio'
+            '--mute-audio',
+            '--disable-features=LockProfileCookieDatabase'
           ],
           ...(chromiumPath ? { executablePath: chromiumPath } : {})
         }
