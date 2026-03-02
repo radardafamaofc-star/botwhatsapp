@@ -37,7 +37,15 @@ export async function registerRoutes(
     if (whatsappClient) {
       const current = await storage.getSession(SESSION_ID);
       console.log("WhatsApp client already exists, current status:", current?.status);
-      return res.json({ message: "Already connecting or connected." });
+      
+      // If status is disconnected or stuck, destroy old client and allow reconnect
+      if (current?.status === 'disconnected' || current?.status === 'starting') {
+        console.log("Destroying stale client to allow fresh connection...");
+        try { await whatsappClient.destroy(); } catch (e) {}
+        whatsappClient = null;
+      } else {
+        return res.json({ message: "Already connecting or connected." });
+      }
     }
 
     console.log("Initializing WhatsApp connection...");
