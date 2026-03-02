@@ -28,15 +28,15 @@ export default function Home() {
   
   const rawStatus = session?.status || "disconnected";
   
-  // Latch: once connected, stay in connected view until user explicitly disconnects
+  // Latch: once connected, remember it
   useEffect(() => {
     if (rawStatus === "connected") setWasConnected(true);
   }, [rawStatus]);
   
   const handleDisconnect = () => setWasConnected(false);
   
-  // Show transfer dashboard if currently connected, OR was connected and transfer is running
-  const showDashboard = rawStatus === "connected" || (wasConnected && transferInProgress);
+  // Show dashboard if connected, OR if was previously connected (keeps UI stable during transfers AND group loading)
+  const showDashboard = rawStatus === "connected" || wasConnected;
   const showQR = !showDashboard && rawStatus === "qr_ready" && !!session?.qrCode;
   const showConnect = !showDashboard && !showQR;
   
