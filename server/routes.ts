@@ -280,39 +280,86 @@ export async function registerRoutes(
         });
       }
 
-      const batchSize = 5;
+      const batchSize = 3;
       let added = 0;
       let failed = 0;
       let details: string[] = [];
 
       for (let i = 0; i < membersToAdd.length; i += batchSize) {
-        if (res.headersSent) break; // Stop if timeout already sent response
+        if (res.headersSent) break;
         
         const batch = membersToAdd.slice(i, i + batchSize);
+        const batchNum = Math.floor(i/batchSize)+1;
+        
+        // Re-fetch target chat before each batch to keep internal references fresh
+        let freshTarget: any;
         try {
-          console.log(`Adding batch ${Math.floor(i/batchSize)+1}: ${batch.length} members...`);
-          const response = await (targetChatFresh as any).addParticipants(batch);
-          console.log(`Batch response:`, JSON.stringify(response));
+          freshTarget = await whatsappClient!.getChatById(targetGroupId);
+        } catch (e: any) {
+          console.error(`[Batch ${batchNum}] Failed to re-fetch target chat:`, e.message);
+          failed += batch.length;
+          details.push(`Lote ${batchNum} falhou: não foi possível acessar grupo destino`);
+          continue;
+        }
+
+        // Try adding one member at a time to avoid WidFactory crashes
+        for (const memberId of batch) {
+          if (res.headersSent) break;
           
-          if (response && typeof response === 'object') {
-            for (const [id, result] of Object.entries(response)) {
-              if (result === 200 || result === true) {
-                added++;
-              } else if (result === 409) {
-                console.log(`Member ${id} already in group.`);
+          let success = false;
+          for (let retry = 0; retry < 2 && !success; retry++) {
+            try {
+              if (retry > 0) {
+                console.log(`[Retry ${retry}] Re-fetching target for ${memberId}...`);
+                freshTarget = await whatsappClient!.getChatById(targetGroupId);
+                await new Promise(r => setTimeout(r, 1000));
+              }
+              
+              console.log(`[Batch ${batchNum}] Adding member ${memberId} (attempt ${retry+1})...`);
+              const response = await Promise.race([
+                freshTarget.addParticipants([memberId]),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error("addParticipants timeout")), 15000))
+              ]);
+              
+              if (response && typeof response === 'object') {
+                for (const [id, result] of Object.entries(response)) {
+                  if (result === 200 || result === true) {
+                    added++;
+                    success = true;
+                  } else if (result === 409) {
+                    console.log(`Member ${id} already in group.`);
+                    success = true;
+                  } else {
+                    // Check nested status object
+                    const statusCode = (result as any)?.code || (result as any)?.status || result;
+                    if (statusCode === 200 || statusCode === 409) {
+                      added++;
+                      success = true;
+                    } else {
+                      console.log(`Member ${id} result:`, JSON.stringify(result));
+                    }
+                  }
+                }
+                if (!success && retry === 1) {
+                  failed++;
+                  details.push(`Falha ao adicionar ${memberId}`);
+                }
               } else {
+                added++;
+                success = true;
+              }
+            } catch (err: any) {
+              console.error(`[Batch ${batchNum}] Error adding ${memberId} (attempt ${retry+1}):`, err.message);
+              if (retry === 1) {
                 failed++;
-                details.push(`Falha ao adicionar ${id}: Código de erro ${result}`);
+                details.push(`Falha: ${memberId} - ${err.message}`);
               }
             }
-          } else {
-            added += batch.length;
           }
-        } catch (err: any) {
-          console.error("Batch add error:", err.message);
-          failed += batch.length;
-          details.push(`Lote falhou: ${err.message}`);
+          // Small delay between individual adds
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
+        // Delay between batches
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
