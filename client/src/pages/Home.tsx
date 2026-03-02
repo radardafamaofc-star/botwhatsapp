@@ -9,7 +9,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   Users,
-  Loader2
+  Loader2,
+  Info
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
