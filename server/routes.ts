@@ -149,28 +149,46 @@ export async function registerRoutes(
   });
 
   app.post(api.groups.moveMembers.path, async (req, res) => {
+    console.log("POST /api/groups/move received, body:", JSON.stringify(req.body));
+    
+    // Server-side timeout to prevent hanging forever
+    const timeout = setTimeout(() => {
+      console.error("MOVE MEMBERS: Operation timed out after 90s");
+      if (!res.headersSent) {
+        res.status(504).json({ message: "Operação expirou. O servidor demorou demais para processar." });
+      }
+    }, 90000);
+
     try {
       const parsed = api.groups.moveMembers.input.safeParse(req.body);
       if (!parsed.success) {
+        clearTimeout(timeout);
+        console.log("Invalid payload:", parsed.error);
         return res.status(400).json({ message: "Invalid payload." });
       }
       const { sourceGroupId, targetGroupId } = parsed.data;
+      console.log(`Moving members from ${sourceGroupId} to ${targetGroupId}`);
       
       if (!whatsappClient) {
+        clearTimeout(timeout);
         return res.status(500).json({ message: "WhatsApp client not connected." });
       }
 
+      console.log("Fetching source chat...");
       const sourceChat = await whatsappClient.getChatById(sourceGroupId);
+      console.log("Fetching target chat...");
       const targetChat = await whatsappClient.getChatById(targetGroupId);
 
       if (!sourceChat || !sourceChat.isGroup) {
+        clearTimeout(timeout);
         return res.status(400).json({ message: "Invalid source group." });
       }
       if (!targetChat || !targetChat.isGroup) {
+        clearTimeout(timeout);
         return res.status(400).json({ message: "Invalid target group." });
       }
 
-      // Re-fetch to ensure we have the latest state
+      console.log("Re-fetching chats for fresh data...");
       let sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
       let targetChatFresh = await whatsappClient.getChatById(targetGroupId);
 
@@ -180,7 +198,6 @@ export async function registerRoutes(
         
         await Promise.race([
           (async () => {
-            // 1. Force update via Puppeteer - usually the most effective
             if ((whatsappClient as any).pupPage) {
               await (whatsappClient as any).pupPage.evaluate(async (sId: string) => {
                 try {
@@ -193,34 +210,32 @@ export async function registerRoutes(
               }, sourceGroupId).catch(() => {});
             }
             
-            // 2. Minimal fetch to trigger internal sync
             try {
               await (sourceChatFresh as any).fetchMessages({ limit: 1 });
             } catch (e) {}
           })(),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
-        ]).catch(e => console.log("Metadata refresh timeout or error:", e.message));
+        ]).catch((e: any) => console.log("Metadata refresh timeout or error:", e.message));
 
-        // Re-fetch chat object to pick up changes from Puppeteer injection
         sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
+        console.log("Metadata refresh done");
       } catch (e: any) {
         console.log("Metadata refresh attempt error:", e.message);
       }
 
       let sourceParticipants = (sourceChatFresh as any).participants || [];
       
-      // Fallback: Check internal groupMetadata
       if (sourceParticipants.length === 0 && (sourceChatFresh as any).groupMetadata) {
         sourceParticipants = (sourceChatFresh as any).groupMetadata.participants || [];
       }
 
-      // Deep fallback: If still empty, try one last direct read from Store via Puppeteer
       if (sourceParticipants.length === 0 && (whatsappClient as any).pupPage) {
         try {
+          console.log("Trying deep fallback via Puppeteer...");
           const remoteParticipants = await (whatsappClient as any).pupPage.evaluate(async (sId: string) => {
             try {
               // @ts-ignore
-              const chat = window.Store.Chat.get(sId) || window.Store.Chat.models.find(c => (c.id._serialized || c.id) === sId);
+              const chat = window.Store.Chat.get(sId) || window.Store.Chat.models.find((c: any) => (c.id._serialized || c.id) === sId);
               if (chat && chat.groupMetadata && chat.groupMetadata.participants) {
                 return chat.groupMetadata.participants.map((p: any) => ({
                   id: { _serialized: p.id._serialized || p.id }
@@ -241,25 +256,28 @@ export async function registerRoutes(
           }, sourceGroupId);
           
           if (remoteParticipants && remoteParticipants.length > 0) {
-            console.log(`Encontrados ${remoteParticipants.length} participantes via fallback profundo`);
+            console.log(`Found ${remoteParticipants.length} participants via deep fallback`);
             sourceParticipants = remoteParticipants;
           }
-        } catch (e) {}
+        } catch (e) {
+          console.log("Deep fallback failed");
+        }
       }
 
       const targetParticipants = (targetChatFresh as any).participants || [];
 
-      console.log(`Source group: ${(sourceChatFresh as any).name} (${sourceParticipants.length} participantes)`);
-      console.log(`Target group: ${(targetChatFresh as any).name} (${targetParticipants.length} participantes)`);
+      console.log(`Source: ${(sourceChatFresh as any).name} (${sourceParticipants.length} members)`);
+      console.log(`Target: ${(targetChatFresh as any).name} (${targetParticipants.length} members)`);
 
       const targetMemberIds = new Set(targetParticipants.map((p: any) => p.id._serialized));
       const membersToAdd = sourceParticipants
         .filter((p: any) => !targetMemberIds.has(p.id._serialized))
         .map((p: any) => p.id._serialized);
 
-      console.log(`Filtered members to add: ${membersToAdd.length}`);
+      console.log(`Members to add: ${membersToAdd.length}`);
 
       if (membersToAdd.length === 0) {
+        clearTimeout(timeout);
         let msg = "Todos os membros já estão no grupo de destino.";
         if (sourceParticipants.length === 0) {
            msg = "O WhatsApp ainda não sincronizou os membros deste grupo. \n\nComo você não é administrador, siga estes passos: \n1. Abra o grupo de origem no seu celular.\n2. Envie qualquer mensagem lá (ex: '.').\n3. Aguarde 3 segundos e tente novamente aqui.";
@@ -272,21 +290,22 @@ export async function registerRoutes(
         });
       }
 
-      // Add participants in small batches to avoid rate limits or errors
       const batchSize = 5;
       let added = 0;
       let failed = 0;
       let details: string[] = [];
 
       for (let i = 0; i < membersToAdd.length; i += batchSize) {
+        if (res.headersSent) break; // Stop if timeout already sent response
+        
         const batch = membersToAdd.slice(i, i + batchSize);
         try {
-          console.log(`Adding batch of ${batch.length} members to ${targetGroupId}...`);
+          console.log(`Adding batch ${Math.floor(i/batchSize)+1}: ${batch.length} members...`);
           const response = await (targetChatFresh as any).addParticipants(batch);
+          console.log(`Batch response:`, JSON.stringify(response));
           
           if (response && typeof response === 'object') {
             for (const [id, result] of Object.entries(response)) {
-              // result 200: success, result 403: privacy, result 404: not found, result 409: already in group
               if (result === 200 || result === true) {
                 added++;
               } else if (result === 409) {
@@ -297,27 +316,32 @@ export async function registerRoutes(
               }
             }
           } else {
-            // Fallback if response is not an object (some versions of wwebjs)
             added += batch.length;
           }
         } catch (err: any) {
-          console.error("Batch add error:", err);
+          console.error("Batch add error:", err.message);
           failed += batch.length;
           details.push(`Lote falhou: ${err.message}`);
         }
-        // Small delay between batches to respect rate limits
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      res.json({
-        message: `Transferência de membros processada.`,
-        added,
-        failed,
-        details
-      });
+      clearTimeout(timeout);
+      if (!res.headersSent) {
+        console.log(`Transfer complete: added=${added}, failed=${failed}`);
+        res.json({
+          message: `Transferência de membros processada.`,
+          added,
+          failed,
+          details
+        });
+      }
     } catch (error: any) {
-      console.error("Error moving members:", error);
-      res.status(500).json({ message: error?.message || "Internal error during move." });
+      clearTimeout(timeout);
+      console.error("Error moving members:", error.message);
+      if (!res.headersSent) {
+        res.status(500).json({ message: error?.message || "Internal error during move." });
+      }
     }
   });
 
