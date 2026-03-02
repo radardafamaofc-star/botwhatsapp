@@ -192,31 +192,13 @@ export async function registerRoutes(
       let sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
       let targetChatFresh = await whatsappClient.getChatById(targetGroupId);
 
-      // FAST REFRESH: Optimized strategy with strict timeout
+      // SAFE metadata refresh - skip Puppeteer evaluate to avoid crashing the client
       try {
         console.log(`Refreshing metadata for: ${sourceGroupId}`);
-        
         await Promise.race([
-          (async () => {
-            if ((whatsappClient as any).pupPage) {
-              await (whatsappClient as any).pupPage.evaluate(async (sId: string) => {
-                try {
-                  // @ts-ignore
-                  if (window.Store && window.Store.GroupMetadata) {
-                    // @ts-ignore
-                    await window.Store.GroupMetadata.update(sId);
-                  }
-                } catch (e) {}
-              }, sourceGroupId).catch(() => {});
-            }
-            
-            try {
-              await (sourceChatFresh as any).fetchMessages({ limit: 1 });
-            } catch (e) {}
-          })(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
-        ]).catch((e: any) => console.log("Metadata refresh timeout or error:", e.message));
-
+          (sourceChatFresh as any).fetchMessages({ limit: 1 }).catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 2000))
+        ]);
         sourceChatFresh = await whatsappClient.getChatById(sourceGroupId);
         console.log("Metadata refresh done");
       } catch (e: any) {
@@ -229,38 +211,17 @@ export async function registerRoutes(
         sourceParticipants = (sourceChatFresh as any).groupMetadata.participants || [];
       }
 
-      if (sourceParticipants.length === 0 && (whatsappClient as any).pupPage) {
+      // If still no participants, try a safe re-fetch without Puppeteer evaluate
+      if (sourceParticipants.length === 0) {
         try {
-          console.log("Trying deep fallback via Puppeteer...");
-          const remoteParticipants = await (whatsappClient as any).pupPage.evaluate(async (sId: string) => {
-            try {
-              // @ts-ignore
-              const chat = window.Store.Chat.get(sId) || window.Store.Chat.models.find((c: any) => (c.id._serialized || c.id) === sId);
-              if (chat && chat.groupMetadata && chat.groupMetadata.participants) {
-                return chat.groupMetadata.participants.map((p: any) => ({
-                  id: { _serialized: p.id._serialized || p.id }
-                }));
-              }
-              // @ts-ignore
-              if (window.Store.GroupMetadata) {
-                // @ts-ignore
-                const gMeta = window.Store.GroupMetadata.get(sId);
-                if (gMeta && gMeta.participants) {
-                  return gMeta.participants.map((p: any) => ({
-                    id: { _serialized: p.id._serialized || p.id }
-                  }));
-                }
-              }
-            } catch (e) {}
-            return [];
-          }, sourceGroupId);
-          
-          if (remoteParticipants && remoteParticipants.length > 0) {
-            console.log(`Found ${remoteParticipants.length} participants via deep fallback`);
-            sourceParticipants = remoteParticipants;
+          console.log("Trying safe re-fetch for participants...");
+          const reFetched = await whatsappClient.getChatById(sourceGroupId);
+          sourceParticipants = (reFetched as any).participants || (reFetched as any).groupMetadata?.participants || [];
+          if (sourceParticipants.length > 0) {
+            console.log(`Found ${sourceParticipants.length} participants via re-fetch`);
           }
         } catch (e) {
-          console.log("Deep fallback failed");
+          console.log("Safe re-fetch failed");
         }
       }
 
